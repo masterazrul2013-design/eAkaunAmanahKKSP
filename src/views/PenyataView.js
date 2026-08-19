@@ -116,7 +116,7 @@ export function renderPenyataView(db, selectedYear) {
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 card-box space-y-4">
         <!-- Header with Official Logo -->
         <div class="text-center border-b-2 border-slate-900 pb-3 space-y-1">
-          <img src="/logo.svg" alt="Kolej Komuniti Sungai Petani Logo" class="h-12 w-auto object-contain mx-auto mb-2" />
+          <img src="./logo.svg" alt="Kolej Komuniti Sungai Petani Logo" class="h-12 w-auto object-contain mx-auto mb-2" />
           <h2 class="text-base font-black text-slate-900 uppercase tracking-wider">${db.settings.organisation_name || "KOLEJ KOMUNITI SUNGAI PETANI"}</h2>
           <h3 class="text-sm font-extrabold text-blue-900 uppercase">PENYATA KEWANGAN AKAUN AMANAH (${yearDisplayTitle})</h3>
           <p class="text-xs text-slate-600 font-medium mt-0.5">Baki Terbawa Awal Tahun: <strong class="text-slate-900 font-bold">${formatCurrency(startYearBal)}</strong></p>

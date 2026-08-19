@@ -1,12 +1,40 @@
-// Invois Module View Component with Exported Form Modal
+// Invoice View Component for Akaun Amanah (Secretary Module) with Dynamic Year/Month Auto-Detection
 import { formatCurrency, STATUS_STYLES } from "../data/schema.js";
 import { renderModal, showDeleteConfirmation } from "../components/Modal.js";
 import { addRecord, updateRecord, deleteRecord } from "../services/api.js";
 import { showToast } from "../components/Toast.js";
 import { canEdit } from "../services/auth.js";
 
+function extractYearAndMonth(dateStr, fallbackYear = "2026") {
+  let targetYear = fallbackYear === "ALL" || !fallbackYear ? "2026" : fallbackYear;
+  let targetMonth = "JAN";
+
+  if (dateStr) {
+    const yMatch = dateStr.match(/\b(202[4-9])\b/);
+    if (yMatch) targetYear = yMatch[1];
+
+    const monthKeys = ["JAN", "FEB", "MAC", "APR", "MEI", "JUN", "JUL", "OGOS", "SEPT", "OKT", "NOV", "DIS"];
+    const mNumMatch = dateStr.match(/\/(\d{1,2})\//) || dateStr.match(/-(\d{1,2})-/) || dateStr.match(/^\d{4}-(\d{2})-\d{2}$/);
+    if (mNumMatch) {
+      const idx = parseInt(mNumMatch[1], 10) - 1;
+      if (idx >= 0 && idx < 12) targetMonth = monthKeys[idx];
+    } else {
+      const upper = dateStr.toUpperCase();
+      for (const m of monthKeys) {
+        if (upper.includes(m)) {
+          targetMonth = m;
+          break;
+        }
+      }
+    }
+  }
+
+  return { year: targetYear, month: targetMonth };
+}
+
 export function renderInvoiceView(db, selectedYear) {
   let records = (db.invoices || []).filter((r) => r.record_status !== "DELETED");
+
   if (selectedYear !== "ALL") {
     records = records.filter((r) => r.year === selectedYear || (!r.year && selectedYear === "2025"));
   }
@@ -19,11 +47,11 @@ export function renderInvoiceView(db, selectedYear) {
       <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm no-print">
         <div>
           <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">MODUL REKOD INVOIS (SETIAUSAHA)</h2>
-          <p class="text-xs font-medium text-slate-500 mt-1">Pengurusan Invois Tuntutan Bayaran & Status Tunggakan</p>
+          <p class="text-xs font-medium text-slate-500 mt-1">Pengurusan Invois Tuntutan Bayaran & Status Tunggakan (${selectedYear === "ALL" ? "Semua Tahun" : "Tahun " + selectedYear})</p>
         </div>
         <div class="flex items-center gap-3">
           <span class="text-sm font-bold text-slate-700 bg-blue-50 px-4 py-2 rounded-xl border border-blue-200">
-            Jumlah Invois: <span class="text-blue-700">${formatCurrency(totalAmt)}</span>
+            Jumlah Invois: <span class="text-blue-700 font-black">${formatCurrency(totalAmt)}</span>
           </span>
           ${
             canEdit()
@@ -53,14 +81,14 @@ export function renderInvoiceView(db, selectedYear) {
             <tbody>
               ${
                 records.length === 0
-                  ? `<tr><td colspan="7" class="text-center py-8 text-slate-400 font-medium">Tiada rekod invois.</td></tr>`
+                  ? `<tr><td colspan="7" class="text-center py-8 text-slate-400 font-medium">Tiada rekod invois bagi tahun ${selectedYear}.</td></tr>`
                   : records
                       .map((r) => {
                         const isOverdue = r.status === "Overdue";
                         return `
                     <tr class="hover:bg-slate-50">
                       <td class="font-bold text-slate-900">${r.invoice_no || r.id}</td>
-                      <td>${r.invoice_date || r.month + " " + (r.year || "2025")}</td>
+                      <td class="font-semibold">${r.invoice_date || r.month + " " + (r.year || "2026")}</td>
                       <td class="font-medium text-slate-800 max-w-xs truncate">${r.description || r.programme || "-"}</td>
                       <td class="text-slate-700 font-semibold">${r.client || "Pelanggan / Agensi"}</td>
                       <td class="text-right font-extrabold text-blue-700">${formatCurrency(r.amount)}</td>
@@ -68,7 +96,7 @@ export function renderInvoiceView(db, selectedYear) {
                         <span class="status-badge ${STATUS_STYLES[r.status] || STATUS_STYLES.Paid}">
                           ${r.status || "Paid"}
                         </span>
-                        ${isOverdue ? `<span class="block text-[10px] text-rose-600 font-extrabold mt-0.5">OVERDUE - 24 DAYS</span>` : ""}
+                        ${isOverdue ? `<span class="block text-[10px] text-rose-600 font-extrabold mt-0.5">OVERDUE - TUNGGAKAN</span>` : ""}
                       </td>
                       <td class="text-center">
                         <div class="flex items-center justify-center gap-1">
@@ -97,41 +125,43 @@ export function renderInvoiceView(db, selectedYear) {
   `;
 }
 
-export function openInvoiceFormModal(db, record = null) {
+export function openInvoiceFormModal(db, record = null, currentSelectedYear = "2026") {
   const isEdit = !!record;
+  const defaultDate = record ? record.invoice_date || "" : `15/01/${currentSelectedYear === "ALL" ? "2026" : currentSelectedYear}`;
+
   renderModal({
     title: isEdit ? `Kemaskini Invois (${record.invoice_no || record.id})` : "Tambah Rekod Invois Baru",
     bodyHtml: `
-      <form id="invoice-form" class="space-y-4">
+      <form id="invoice-form" class="space-y-4 text-xs">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">No. Rujukan Invois</label>
-            <input type="text" id="inv-no" value="${record ? record.invoice_no || "" : ""}" placeholder="KKSP01/2025" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold" required />
+            <label class="block font-bold text-slate-700 mb-1">No. Rujukan Invois</label>
+            <input type="text" id="inv-no" value="${record ? record.invoice_no || "" : ""}" placeholder="KKSP01/${currentSelectedYear === "ALL" ? "2026" : currentSelectedYear}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold" required />
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Tarikh Invois</label>
-            <input type="text" id="inv-date" value="${record ? record.invoice_date || "" : ""}" placeholder="24/04/2025" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold" />
+            <label class="block font-bold text-slate-700 mb-1">Tarikh Invois (DD/MM/YYYY)</label>
+            <input type="text" id="inv-date" value="${defaultDate}" placeholder="15/01/2026" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold" required />
           </div>
         </div>
 
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">Tajuk Invois / Program</label>
-          <input type="text" id="inv-desc" value="${record ? record.description || record.programme || "" : ""}" placeholder="PROGRAM JALINAN ILMU..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold" required />
+          <label class="block font-bold text-slate-700 mb-1">Tajuk Invois / Program</label>
+          <input type="text" id="inv-desc" value="${record ? record.description || record.programme || "" : ""}" placeholder="PROGRAM JALINAN ILMU..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold" required />
         </div>
 
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">Bayaran Melalui / Klien</label>
-          <input type="text" id="inv-client" value="${record ? record.client || "" : ""}" placeholder="SMK AIR MERAH" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold" />
+          <label class="block font-bold text-slate-700 mb-1">Bayaran Melalui / Klien</label>
+          <input type="text" id="inv-client" value="${record ? record.client || "" : ""}" placeholder="SMK AIR MERAH / AGENSI" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold" required />
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Jumlah Tuntutan (RM)</label>
-            <input type="number" step="0.01" id="inv-amount" value="${record ? record.amount || "" : ""}" placeholder="4400.00" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-blue-700" required />
+            <label class="block font-bold text-slate-700 mb-1">Jumlah Tuntutan (RM)</label>
+            <input type="number" step="0.01" id="inv-amount" value="${record ? record.amount || "" : ""}" placeholder="4400.00" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-blue-700" required />
           </div>
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">Status Invois</label>
-            <select id="inv-status" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
+            <label class="block font-bold text-slate-700 mb-1">Status Invois</label>
+            <select id="inv-status" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
               <option value="Paid" ${record && record.status === "Paid" ? "selected" : ""}>Paid (Telah Dibayar)</option>
               <option value="Issued" ${record && record.status === "Issued" ? "selected" : ""}>Issued (Telah Dikeluarkan)</option>
               <option value="Overdue" ${record && record.status === "Overdue" ? "selected" : ""}>Overdue (Tunggakan)</option>
@@ -144,15 +174,24 @@ export function openInvoiceFormModal(db, record = null) {
     footerButtons: [
       { label: "Batal", className: "px-4 py-2 border rounded-lg text-slate-700", onClick: (e, c) => c() },
       {
-        label: isEdit ? "Kemaskini" : "Simpan",
-        className: "px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold",
+        label: isEdit ? "Kemaskini" : "Simpan Invois",
+        className: "px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow-md",
         onClick: async (e, close) => {
+          const form = document.getElementById("invoice-form");
+          if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+          }
+
+          const dateVal = document.getElementById("inv-date").value;
+          const { year, month } = extractYearAndMonth(dateVal, currentSelectedYear);
+
           const payload = {
-            id: isEdit ? record.id : `INV-2025-${String((db.invoices || []).length + 1).padStart(4, "0")}`,
+            id: isEdit ? record.id : `INV-${year}-${String((db.invoices || []).length + 1).padStart(4, "0")}`,
             invoice_no: document.getElementById("inv-no").value,
-            invoice_date: document.getElementById("inv-date").value,
-            month: "APR",
-            year: "2025",
+            invoice_date: dateVal,
+            month: month,
+            year: year,
             programme: document.getElementById("inv-desc").value,
             description: document.getElementById("inv-desc").value,
             client: document.getElementById("inv-client").value,
@@ -161,7 +200,7 @@ export function openInvoiceFormModal(db, record = null) {
           };
           if (isEdit) await updateRecord("Invoice", payload);
           else await addRecord("Invoice", payload);
-          showToast("✓ Rekod invois berjaya disimpan");
+          showToast("✓ Rekod invois berjaya disimpan bagi Tahun " + year);
           close();
           if (window.appRefreshUI) window.appRefreshUI();
           else window.location.reload();
@@ -171,12 +210,12 @@ export function openInvoiceFormModal(db, record = null) {
   });
 }
 
-export function attachInvoiceEvents(db) {
-  window.openInvoiceFormModal = (dbRef, rec) => openInvoiceFormModal(dbRef || db, rec);
+export function attachInvoiceEvents(db, selectedYear = "2026") {
+  window.openInvoiceFormModal = (dbRef, rec) => openInvoiceFormModal(dbRef || db, rec, selectedYear);
 
   const addBtn = document.getElementById("btn-add-invoice");
   if (addBtn) {
-    addBtn.onclick = () => openInvoiceFormModal(db);
+    addBtn.onclick = () => openInvoiceFormModal(db, null, selectedYear);
   }
 
   // Printable Official Invoice Generator Modal
@@ -184,110 +223,74 @@ export function attachInvoiceEvents(db) {
     const rec = (db.invoices || []).find((r) => r.id === id);
     if (!rec) return;
 
-    const orgName = db.settings.organisation_name || "KOLEJ KOMUNITI SUNGAI PETANI";
+    const orgName = db.settings ? db.settings.organisation_name || "KOLEJ KOMUNITI SUNGAI PETANI" : "KOLEJ KOMUNITI SUNGAI PETANI";
     const invNo = rec.invoice_no || rec.id;
-    const invDate = rec.invoice_date || rec.month + " 2025";
-    const client = rec.client || "SMK Air Merah / Agensi Pelanggan";
-    const title = rec.description || rec.programme || "Program Latihan Amanah";
-    const amount = Number(rec.amount) || 0;
+    const invDate = rec.invoice_date || rec.month + " " + (rec.year || "2026");
+    const client = rec.client || "Pelanggan / Agensi";
 
     renderModal({
       title: `Cetakan Invois Rasmi - ${invNo}`,
       bodyHtml: `
-        <div id="single-invoice-print" class="bg-white p-6 text-slate-900 border border-slate-200 rounded-2xl flex flex-col justify-between">
-          <!-- Top Content Section -->
-          <div class="inv-top-section space-y-4 flex-1">
-            <!-- Institutional Header with Official SVG Logo -->
-            <div class="flex items-center justify-between border-b-2 border-slate-900 pb-4">
-              <div class="flex items-center gap-3">
-                <img src="/logo.svg" alt="Kolej Komuniti Sungai Petani Logo" class="h-12 w-auto object-contain" />
-                <div>
-                  <h2 class="text-base font-black text-slate-900 uppercase tracking-wider">${orgName}</h2>
-                  <p class="text-xs font-bold text-slate-700 mt-0.5">Unit Akaun Amanah & Pembangunan Kerjaya</p>
-                  <p class="text-[11px] text-slate-600">77, Lengkok Cempaka 1, Pusat Bandar Amanjaya, 08000 Sungai Petani, Kedah • Tel: 04-441 2909</p>
-                </div>
-              </div>
-              <div class="text-right space-y-1">
-                <span class="px-3 py-1 bg-blue-900 text-white font-black text-xs rounded-xl uppercase tracking-wider shadow-sm">INVOIS RASMI</span>
-                <p class="text-xs font-bold text-slate-900 mt-2">No. Invois: <span class="font-mono text-blue-700">${invNo}</span></p>
-                <p class="text-[11px] font-medium text-slate-600">Tarikh: ${invDate}</p>
-              </div>
+        <div id="single-invoice-print" class="bg-white p-6 rounded-xl text-slate-900 border border-slate-300 font-sans text-xs space-y-4">
+          <div class="flex justify-between items-start border-b pb-4">
+            <div>
+              <h2 class="text-xl font-extrabold text-blue-900">${orgName}</h2>
+              <p class="text-slate-500 font-semibold mt-0.5">Unit Akaun Amanah • Invois Tuntutan Bayaran</p>
             </div>
-
-            <!-- Bill To Box & Details -->
-            <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
-              <div>
-                <p class="font-bold text-slate-500 uppercase tracking-wider text-[10px]">DIBILKAN KEPADA (AGENSI / KLIEN):</p>
-                <p class="text-sm font-black text-slate-900 mt-0.5">${client}</p>
-                <p class="text-[11px] text-slate-600 mt-0.5">Jabatan Pendidikan / Agensi Kerajaan / Sekolah</p>
-              </div>
-              <div class="text-right space-y-1 text-xs">
-                <p><span class="font-bold text-slate-500">Status Bayaran:</span> <span class="font-black text-emerald-700 uppercase px-2 py-0.5 bg-emerald-100 rounded-md">${rec.status || "PAID"}</span></p>
-                <p><span class="font-bold text-slate-500">Terma Pembayaran:</span> <span class="font-extrabold text-slate-800">30 Hari</span></p>
-                <p><span class="font-bold text-slate-500">No. Akaun Bank:</span> <span class="font-extrabold text-slate-900 font-mono">BIMB 02021010045928</span></p>
-              </div>
-            </div>
-
-            <!-- Itemized Table -->
-            <div class="pt-1">
-              <table class="inst-table">
-                <thead>
-                  <tr>
-                    <th class="w-12 text-center">BIL</th>
-                    <th>PERIHAL PROGRAM / PERKHIDMATAN TUNTUTAN</th>
-                    <th class="text-center w-24">KUANTITI</th>
-                    <th class="text-right w-32">KADAR (RM)</th>
-                    <th class="text-right w-36">JUMLAH (RM)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td class="font-bold text-center py-3">1</td>
-                    <td class="py-3">
-                      <p class="font-black text-slate-900 text-sm">${title}</p>
-                      <p class="text-xs text-slate-600 mt-0.5">Tuntutan Bayaran Pelaksanaan Program Latihan & Perkhidmatan Akaun Amanah Kolej Komuniti Sungai Petani.</p>
-                    </td>
-                    <td class="text-center font-bold text-slate-800 py-3">1 Pakej</td>
-                    <td class="text-right font-bold text-slate-800 py-3">${formatCurrency(amount)}</td>
-                    <td class="text-right font-black text-blue-900 text-base py-3">${formatCurrency(amount)}</td>
-                  </tr>
-                </tbody>
-                <tfoot class="bg-slate-100 font-black text-sm border-t-2 border-slate-900">
-                  <tr>
-                    <td colspan="4" class="text-right uppercase py-2.5">JUMLAH KESELURUHAN PERLU DIBAYAR:</td>
-                    <td class="text-right text-blue-900 text-base py-2.5 font-black">${formatCurrency(amount)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+            <div class="text-right">
+              <span class="text-xs uppercase font-extrabold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">INVOIS RASMI</span>
+              <p class="font-mono text-sm font-bold text-slate-900 mt-1">${invNo}</p>
+              <p class="text-slate-500 text-[11px]">Tarikh: ${invDate}</p>
             </div>
           </div>
 
-          <!-- Bottom Section: Signature & Payment Notes -->
-          <div class="inv-bottom-section pt-5 border-t-2 border-slate-900 grid grid-cols-2 gap-8 text-xs mt-auto">
-            <div class="space-y-1.5">
-              <p class="font-extrabold text-slate-900 uppercase">Arahan Pembayaran (Payment Terms):</p>
-              <ul class="list-disc pl-4 text-slate-700 text-[11px] leading-relaxed space-y-0.5">
-                <li>Sila buat bayaran melalui Cek / EFT atas nama <strong class="text-slate-900">AKAMANAH KOLEJ KOMUNITI SUNGAI PETANI</strong>.</li>
-                <li>Sila simpan bukti pembayaran bagi tujuan pengesahan resit rasmi.</li>
-              </ul>
+          <div class="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <div>
+              <p class="text-[10px] font-bold text-slate-400 uppercase">Kepada / Bayaran Melalui:</p>
+              <p class="font-bold text-slate-900 text-sm mt-0.5">${client}</p>
             </div>
-            <div class="text-center">
-              <p class="font-extrabold text-slate-900 uppercase">Disediakan & Disahkan Oleh:</p>
-              <div class="h-16 sig-line border-b-2 border-slate-900 mx-auto w-3/4 my-2"></div>
-              <p class="mt-1 font-black text-slate-900 uppercase text-xs">Setiausaha / Bendahari Amanah</p>
-              <p class="text-slate-600 text-[10px] font-semibold">Cop Rasmi Jabatan & Tarikh</p>
+            <div class="text-right">
+              <p class="text-[10px] font-bold text-slate-400 uppercase">Status Pembayaran:</p>
+              <span class="inline-block mt-1 font-bold ${rec.status === "Paid" ? "text-emerald-700" : "text-rose-600"}">${rec.status || "Issued"}</span>
             </div>
+          </div>
+
+          <table class="w-full text-left border-collapse border border-slate-300">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-300">
+                <th class="p-2 border-r border-slate-300">Bil</th>
+                <th class="p-2 border-r border-slate-300">Keterangan / Program</th>
+                <th class="p-2 text-right">Jumlah (RM)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="p-2 border-r border-slate-300 font-mono">1</td>
+                <td class="p-2 border-r border-slate-300 font-semibold">${rec.description || rec.programme}</td>
+                <td class="p-2 text-right font-bold text-slate-900">${formatCurrency(rec.amount)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="flex justify-end pt-2">
+            <div class="w-1/2 bg-blue-50 p-3 rounded-lg border border-blue-200 text-right">
+              <p class="text-xs font-bold text-slate-600">JUMLAH KESELURUHAN:</p>
+              <p class="text-xl font-black text-blue-900">${formatCurrency(rec.amount)}</p>
+            </div>
+          </div>
+
+          <div class="pt-6 mt-6 border-t border-slate-200 text-[10px] text-slate-500 flex justify-between">
+            <p>Cetakan Komputer Sah - Tidak Memerlukan Tandatangan Fizikal</p>
+            <p>Mukasurat 1 / 1</p>
           </div>
         </div>
       `,
       footerButtons: [
         { label: "Tutup", className: "px-4 py-2 border rounded-lg text-slate-700", onClick: (e, c) => c() },
         {
-          label: "🖨️ Cetak Invois Rasmi",
-          className: "px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md transition",
-          onClick: () => {
-            window.print();
-          },
+          label: "🖨️ Cetak Invois Sekarang",
+          className: "px-4 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-md",
+          onClick: () => window.print(),
         },
       ],
     });
@@ -299,17 +302,19 @@ export function attachInvoiceEvents(db) {
 
   window.editInvoiceRecord = (id) => {
     const rec = (db.invoices || []).find((r) => r.id === id);
-    if (rec) openInvoiceFormModal(db, rec);
+    if (rec) openInvoiceFormModal(db, rec, selectedYear);
   };
 
   window.deleteInvoiceRecord = (id) => {
+    const rec = (db.invoices || []).find((r) => r.id === id);
+    if (!rec) return;
     showDeleteConfirmation({
-      recordId: id,
-      description: "Invois Tuntutan",
-      amount: "RM 0.00",
+      recordId: rec.id,
+      description: rec.description || rec.programme,
+      amount: formatCurrency(rec.amount),
       onConfirm: async () => {
-        await deleteRecord("Invoice", id);
-        showToast("✓ Rekod telah dipadam");
+        await deleteRecord("Invoice", rec.id);
+        showToast("✓ Rekod invois dipadam");
         if (window.appRefreshUI) window.appRefreshUI();
         else window.location.reload();
       },

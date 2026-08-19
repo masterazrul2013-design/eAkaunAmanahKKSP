@@ -42,16 +42,23 @@ body {
 /* Full Page A4 Print Layout - Expands Card Border to Fill Printable Page Height */
 @media print {
   @page {
+    size: A4 portrait !important;
+    margin: 5mm !important;
+  }
+
+  body {
     size: A4 portrait;
-    margin: 8mm;
+    margin: 0 !important;
+    padding: 0 !important;
   }
   
   html, body {
     background: #ffffff !important;
     color: #000000 !important;
-    font-size: 12px !important;
+    font-size: 11px !important;
     height: 100% !important;
-    overflow: visible !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
   }
   
   .no-print {
@@ -64,8 +71,9 @@ body {
     overflow: visible !important;
   }
 
-  /* When Modal is Open: Hide background app and print ONLY the modal document card */
-  body:has(#app-modal-backdrop) #app {
+  /* When Modal or Direct Print Container is Open: Hide background app */
+  body:has(#app-modal-backdrop) #app,
+  body:has(#direct-print-container) #app {
     display: none !important;
   }
 
@@ -105,18 +113,38 @@ body {
 
   /* Base Document Styling */
   #single-invoice-print,
-  #single-quotation-print {
+  #single-quotation-print,
+  #single-asset-print {
     border: 2px solid #0f172a !important;
-    border-radius: 1rem !important;
-    padding: 24px !important;
+    border-radius: 0.75rem !important;
+    padding: 20px !important;
     margin: 0 auto !important;
     width: 100% !important;
     max-width: 100% !important;
+    min-height: 265mm !important;
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
     justify-content: space-between !important;
     page-break-inside: avoid !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #single-asset-print-form {
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    display: block !important;
+    page-break-inside: avoid !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
     box-shadow: none !important;
     background: #ffffff !important;
     -webkit-print-color-adjust: exact !important;

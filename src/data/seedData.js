@@ -6153,3 +6153,30 @@ export const INITIAL_SETTINGS = {
   google_sheet_url: "",
   api_mode: "DEMO"
 };
+
+export const INITIAL_ASSETS = [
+  {
+    id: "AST-2026-0001",
+    asset_name: "Komputer Riba Dell Latitude 5440",
+    serial_no: "KKSP/AM/HM/2026/001",
+    location: "Pejabat Akaun Amanah",
+    value: 4850.00,
+    asset_type: "Harta Modal",
+    acquisition_date: "15/01/2026",
+    year: "2026",
+    status: "Aktif",
+    record_status: "ACTIVE"
+  },
+  {
+    id: "AST-2026-0002",
+    asset_name: "Pencetak Laser Multifungsi HP LaserJet",
+    serial_no: "KKSP/AM/INV/2026/002",
+    location: "Bilik Penyelaras UPB",
+    value: 1420.00,
+    asset_type: "Inventori",
+    acquisition_date: "02/02/2026",
+    year: "2026",
+    status: "Aktif",
+    record_status: "ACTIVE"
+  }
+];

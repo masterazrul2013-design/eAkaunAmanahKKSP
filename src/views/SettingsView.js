@@ -1,5 +1,5 @@
-// System Settings View Component
-import { updateSettings, resetToSeedData } from "../services/api.js";
+// System Settings & Database Maintenance View Component
+import { updateSettings, resetToSeedData, exportDatabaseToJson, importDatabaseFromJsonFile } from "../services/api.js";
 import { showToast } from "../components/Toast.js";
 import { renderModal } from "../components/Modal.js";
 
@@ -11,12 +11,12 @@ export function renderSettingsView(db) {
       <!-- Header -->
       <div class="flex items-center justify-between bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">TETAPAN SISTEM & INTEGRASI GOOGLE SHEETS</h2>
-          <p class="text-xs font-medium text-slate-500 mt-1">Konfigurasi Parameter Kewangan, Mod Operasi & Sambungan Database</p>
+          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">TETAPAN SISTEM & INTEGRASI DATABASE</h2>
+          <p class="text-xs font-medium text-slate-500 mt-1">Penyelenggaraan Database, Eksport/Import Fail Data & Sambungan Google Sheets</p>
         </div>
       </div>
 
-      <!-- Settings Form -->
+      <!-- Settings Form Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Main Form Column -->
         <div class="lg:col-span-2 space-y-6">
@@ -60,8 +60,8 @@ export function renderSettingsView(db) {
             <div>
               <label class="block text-xs font-bold text-slate-700 mb-1">Mod Sambungan API</label>
               <select id="set-apimode" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
-                <option value="DEMO" ${settings.api_mode === "DEMO" ? "selected" : ""}>🟡 DEMO MODE (Local Storage Database)</option>
-                <option value="LIVE" ${settings.api_mode === "LIVE" ? "selected" : ""}>🟢 LIVE MODE (Google Sheets Apps Script API)</option>
+                <option value="DEMO" ${settings.api_mode === "DEMO" ? "selected" : ""}>🟡 DEMO MODE (Local Storage & File Backup Database)</option>
+                <option value="LIVE" ${settings.api_mode === "LIVE" ? "selected" : ""}>🟢 LIVE MODE (Google Sheets Apps Script API Sync)</option>
               </select>
             </div>
 
@@ -79,8 +79,32 @@ export function renderSettingsView(db) {
           </form>
         </div>
 
-        <!-- Sidebar Info & Maintenance Column -->
+        <!-- Sidebar Maintenance & Backup Column -->
         <div class="space-y-6">
+          <!-- Backup & Restore Data Box -->
+          <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <h4 class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+              <span>💾</span> EKSPORT & IMPORT DATABASE BACKUP
+            </h4>
+            <p class="text-xs text-slate-500 leading-relaxed">
+              Bagi memastikan data pangkalan data <strong>kekal dan dikemaskini merentasi komputer / pelayar lain</strong>, anda boleh memuat turun fail backup `.json` atau memuat naik semula fail backup terkini.
+            </p>
+
+            <div class="space-y-2 pt-1">
+              <button id="btn-export-db" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center justify-center gap-2">
+                <span>📥</span> Muat Turun Backup JSON
+              </button>
+
+              <div class="relative">
+                <input type="file" id="file-import-db" accept=".json" class="hidden" />
+                <button id="btn-import-trigger" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center justify-center gap-2">
+                  <span>📤</span> Import Fail Backup JSON
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reset Database Box -->
           <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
             <h4 class="text-sm font-bold text-slate-900">Modul Penyelenggaraan Data</h4>
             <p class="text-xs text-slate-500">Anda boleh menetapkan semula pangkalan data kepada data awal asal (AKAUN AMANAH 2025.xlsx).</p>
@@ -124,6 +148,33 @@ export function attachSettingsEvents(db) {
       updateSettings(updated);
       showToast("✓ Tetapan sistem berjaya disimpan");
       setTimeout(() => window.location.reload(), 500);
+    };
+  }
+
+  // Backup JSON Export Button
+  const btnExport = document.getElementById("btn-export-db");
+  if (btnExport) {
+    btnExport.onclick = () => {
+      exportDatabaseToJson();
+      showToast("✓ Fail backup JSON berjaya dimuat turun");
+    };
+  }
+
+  // Backup JSON Import Button
+  const fileImportInput = document.getElementById("file-import-db");
+  const btnImportTrigger = document.getElementById("btn-import-trigger");
+  if (btnImportTrigger && fileImportInput) {
+    btnImportTrigger.onclick = () => fileImportInput.click();
+    fileImportInput.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        await importDatabaseFromJsonFile(file);
+        showToast("✓ Pangkalan data berjaya dimuat naik & dikemaskini!");
+        setTimeout(() => window.location.reload(), 600);
+      } catch (err) {
+        alert("Ralat semasa import fail: " + err.message);
+      }
     };
   }
 

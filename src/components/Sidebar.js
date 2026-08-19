@@ -17,6 +17,7 @@ export function renderSidebar({ currentRoute }) {
     { key: "invoices", label: "Rekod Invois", icon: "📄", route: "invoices" },
     { key: "quotations", label: "Rekod Sebutharga", icon: "📋", route: "quotations" },
     { key: "inventory", label: "Pengurusan Stok", icon: "📦", route: "inventory" },
+    { key: "assets", label: "Pengurusan Aset", icon: "🏛️", route: "assets" },
     { key: "data_quality", label: "Kualiti Data", icon: "🛡️", route: "data_quality", badge: totalIssues },
     { key: "reports", label: "Laporan", icon: "📈", route: "reports" },
     { key: "audit", label: "Log Audit", icon: "📜", route: "audit" },
@@ -28,7 +29,7 @@ export function renderSidebar({ currentRoute }) {
       <!-- Sidebar Header with Official Institutional Logo -->
       <div class="p-4 border-b border-slate-800 space-y-2">
         <div class="bg-white p-2 rounded-xl border border-slate-700 shadow-md">
-          <img src="/logo.svg" alt="Kolej Komuniti Sungai Petani Logo" class="w-full h-auto max-h-12 object-contain mx-auto" />
+          <img src="./logo.svg" alt="Kolej Komuniti Sungai Petani Logo" class="w-full h-auto max-h-12 object-contain mx-auto" />
         </div>
         <div class="pt-1">
           <h1 class="text-xs font-extrabold text-white tracking-wider leading-tight uppercase">AKAUN AMANAH</h1>

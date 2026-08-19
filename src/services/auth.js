@@ -10,10 +10,10 @@ export const ROLES = {
 
 export const ROLE_PERMISSIONS = {
   [ROLES.ADMIN]: ["*"],
-  [ROLES.BENDAHARI]: ["dashboard", "penyata", "income", "expenses", "claims", "reports", "data_quality", "audit"],
-  [ROLES.SETIAUSAHA]: ["dashboard", "penyata", "invoices", "quotations", "reports", "data_quality"],
-  [ROLES.STOCK_OFFICER]: ["dashboard", "inventory", "reports", "data_quality"],
-  [ROLES.VIEWER]: ["dashboard", "penyata", "income", "expenses", "claims", "invoices", "quotations", "inventory", "reports"],
+  [ROLES.BENDAHARI]: ["dashboard", "penyata", "income", "expenses", "claims", "assets", "reports", "data_quality", "audit"],
+  [ROLES.SETIAUSAHA]: ["dashboard", "penyata", "invoices", "quotations", "assets", "reports", "data_quality"],
+  [ROLES.STOCK_OFFICER]: ["dashboard", "inventory", "assets", "reports", "data_quality"],
+  [ROLES.VIEWER]: ["dashboard", "penyata", "income", "expenses", "claims", "invoices", "quotations", "inventory", "assets", "reports"],
 };
 
 let currentUser = {

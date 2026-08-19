@@ -1,4 +1,4 @@
-// Database & API Synchronization Service
+// Database & API Synchronization Service with Cloud & File Backup Support
 import {
   INITIAL_PENYATA,
   INITIAL_INCOME,
@@ -7,48 +7,149 @@ import {
   INITIAL_INVOICES,
   INITIAL_QUOTATIONS,
   INITIAL_STOCK,
+  INITIAL_ASSETS,
   INITIAL_USERS,
   INITIAL_SETTINGS,
 } from "../data/seedData.js";
 import { logAction } from "./audit.js";
 import { getCurrentUser } from "./auth.js";
+import { pushDatabaseToCloud } from "./cloudSync.js";
 
 const DB_KEY = "akaun_amanah_db_v1";
 
 /**
- * Initialize Database from LocalStorage or Seed Data
+ * Initialize Database from LocalStorage, Cloud, or Seed Data
  */
 export function getDatabase() {
   const stored = localStorage.getItem(DB_KEY);
+  let db = null;
   if (stored) {
     try {
-      return JSON.parse(stored);
+      db = JSON.parse(stored);
     } catch (e) {
       console.error("Error parsing stored database, reinitializing:", e);
     }
   }
 
-  const initialDb = {
-    penyata: INITIAL_PENYATA,
-    incomes: INITIAL_INCOME,
-    expenses: INITIAL_EXPENSES,
-    claims: INITIAL_CLAIMS,
-    invoices: INITIAL_INVOICES,
-    quotations: INITIAL_QUOTATIONS,
-    stock: INITIAL_STOCK,
-    users: INITIAL_USERS,
-    settings: INITIAL_SETTINGS,
-    last_synced: new Date().toISOString(),
-  };
+  if (!db) {
+    db = {
+      penyata: INITIAL_PENYATA,
+      incomes: INITIAL_INCOME,
+      expenses: INITIAL_EXPENSES,
+      claims: INITIAL_CLAIMS,
+      invoices: INITIAL_INVOICES,
+      quotations: INITIAL_QUOTATIONS,
+      stock: INITIAL_STOCK,
+      assets: INITIAL_ASSETS,
+      users: INITIAL_USERS,
+      settings: INITIAL_SETTINGS,
+      last_synced: new Date().toISOString(),
+    };
+  }
 
-  localStorage.setItem(DB_KEY, JSON.stringify(initialDb));
-  return initialDb;
+  if (!db.assets) db.assets = INITIAL_ASSETS;
+
+  // Default unit to PSH for 2025 income records & migrate UPB to HEP
+  if (db.incomes && Array.isArray(db.incomes)) {
+    db.incomes.forEach((r) => {
+      if (r.unit === "UPB") {
+        r.unit = "HEP";
+      }
+      if (!r.unit || r.year === "2025" || (!r.year && r.id.includes("2025"))) {
+        if (!r.unit || r.unit === "RUC") {
+          r.unit = "PSH";
+        }
+      }
+    });
+  }
+
+  // Automatic Data Cleaning for Initial Seed Expenses ONLY (Fix swapped amount/po_no fields from raw Excel dataset)
+  if (db.expenses && Array.isArray(db.expenses)) {
+    db.expenses.forEach((r) => {
+      // Only clean seed data records where amount is 0 and po_no contains a currency string like "800.00" or "2,500.00"
+      if (!r._seed_po_cleaned && (!r.amount || r.amount === 0) && r.po_no && (r.po_no.includes(".00") || r.po_no.includes(","))) {
+        const cleanStr = String(r.po_no).replace(/[^0-9.-]/g, "");
+        const val = parseFloat(cleanStr);
+        if (!isNaN(val) && val !== 0) {
+          r.amount = Math.abs(val);
+          const match = (r.description + " " + (r.remarks || "")).match(/(PO\d+)/i);
+          if (match) {
+            r.po_no = match[1];
+          } else {
+            r.po_no = "";
+          }
+        }
+        r._seed_po_cleaned = true;
+      }
+    });
+  }
+
+  // Auto-Fix Mismatched Record Years: If date contains 2026 (or 2024/2025) but year field was stored incorrectly
+  ["invoices", "quotations", "claims", "expenses", "incomes"].forEach((key) => {
+    if (db[key] && Array.isArray(db[key])) {
+      db[key].forEach((r) => {
+        const dStr = r.invoice_date || r.quotation_date || r.claim_date || r.payment_date || r.date || "";
+        if (dStr) {
+          const yMatch = dStr.match(/\b(202[4-9])\b/);
+          if (yMatch && r.year !== yMatch[1]) {
+            r.year = yMatch[1];
+            if (r.id && r.id.includes("2025") && yMatch[1] === "2026") {
+              r.id = r.id.replace("2025", "2026");
+            }
+          }
+        }
+      });
+    }
+  });
+
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  return db;
 }
 
+/**
+ * Save Database to Local Storage and Sync to Cloud / Cloud Sync Engine
+ */
 export function saveDatabase(db) {
   db.last_synced = new Date().toISOString();
   localStorage.setItem(DB_KEY, JSON.stringify(db));
   window.dispatchEvent(new CustomEvent("db-updated", { detail: db }));
+
+  // Auto trigger background cloud sync
+  pushDatabaseToCloud();
+
+  const settings = db.settings || {};
+  if (settings.google_sheet_url && settings.api_mode === "LIVE") {
+    syncToGoogleSheets(db, settings.google_sheet_url);
+  }
+}
+
+/**
+ * Sync Data to Google Sheets Web App Endpoint
+ */
+async function syncToGoogleSheets(db, url) {
+  try {
+    await fetch(url, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(db),
+    });
+  } catch (e) {
+    console.warn("Background cloud sync error:", e);
+  }
+}
+
+export function getSettings() {
+  const db = getDatabase();
+  return db.settings || {};
+}
+
+export function updateSettings(newSettings) {
+  const db = getDatabase();
+  db.settings = { ...db.settings, ...newSettings };
+  logAction(getCurrentUser().name, "UPDATE_SETTINGS", "SYSTEM", "SET-001", "", "Updated system settings");
+  saveDatabase(db);
+  return db.settings;
 }
 
 export function resetToSeedData() {
@@ -59,165 +160,89 @@ export function resetToSeedData() {
   return db;
 }
 
-// Global API Mode & Settings
-export function getSettings() {
+/**
+ * Export full Database as a JSON File Download
+ */
+export function exportDatabaseToJson() {
   const db = getDatabase();
-  return db.settings || INITIAL_SETTINGS;
+  const jsonStr = JSON.stringify(db, null, 2);
+  const blob = new Blob([jsonStr], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const filename = `eAkaunAmanah_Database_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-export function updateSettings(newSettings) {
-  const db = getDatabase();
-  const oldSettings = db.settings;
-  db.settings = { ...db.settings, ...newSettings };
-  saveDatabase(db);
-  logAction(getCurrentUser().name, "UPDATE_SETTINGS", "SETTINGS", "SET-001", oldSettings, newSettings);
-  return db.settings;
-}
-
-// Generic CRUD functions
-export async function fetchModuleData(moduleKey) {
-  const db = getDatabase();
-  const settings = getSettings();
-
-  // If live mode configured, attempt API sync
-  if (settings.api_mode === "LIVE" && settings.google_sheet_url) {
-    try {
-      const res = await fetch(`${settings.google_sheet_url}?action=get${moduleKey}`);
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        db[moduleKey.toLowerCase()] = json.data;
-        saveDatabase(db);
-        return json.data;
+/**
+ * Import full Database from a JSON File
+ */
+export function importDatabaseFromJsonFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+        if (!importedData.incomes && !importedData.expenses && !importedData.penyata) {
+          throw new Error("Format fail JSON tidak sah untuk Akaun Amanah.");
+        }
+        importedData.last_synced = new Date().toISOString();
+        localStorage.setItem(DB_KEY, JSON.stringify(importedData));
+        logAction(getCurrentUser().name, "IMPORT_DB", "SYSTEM", "IMP-001", "", "Imported database from JSON backup file");
+        saveDatabase(importedData);
+        resolve(importedData);
+      } catch (err) {
+        reject(err);
       }
-    } catch (err) {
-      console.warn(`GAS Live API call failed for ${moduleKey}, fallback to local cache:`, err);
-    }
-  }
-
-  return (db[moduleKey.toLowerCase()] || []).filter((r) => r.record_status !== "DELETED");
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsText(file);
+  });
 }
 
-export async function addRecord(moduleName, record) {
+export async function addRecord(moduleType, record) {
   const db = getDatabase();
-  const user = getCurrentUser();
-  const now = new Date().toISOString();
+  let key = moduleType.toLowerCase() + "s";
+  if (key === "assets") key = "assets";
+  if (!db[key]) db[key] = [];
 
-  record.created_at = now;
-  record.updated_at = now;
-  record.created_by = user.name;
-  record.record_status = "ACTIVE";
-
-  const keyMap = {
-    Income: "incomes",
-    Expense: "expenses",
-    Claim: "claims",
-    Invoice: "invoices",
-    Quotation: "quotations",
-    Stock: "stock",
-  };
-
-  const listKey = keyMap[moduleName] || moduleName.toLowerCase();
-  if (!db[listKey]) db[listKey] = [];
-  db[listKey].unshift(record);
-
+  db[key].unshift(record);
+  logAction(getCurrentUser().name, "CREATE", moduleType.toUpperCase(), record.id || "NEW", "", `Created ${moduleType} record`);
   saveDatabase(db);
-  logAction(user.name, "CREATE", moduleName.toUpperCase(), record.id, "", record);
-
-  // Sync to GAS if live
-  const settings = getSettings();
-  if (settings.api_mode === "LIVE" && settings.google_sheet_url) {
-    try {
-      await fetch(settings.google_sheet_url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: `add${moduleName}`, data: record, user: user.name }),
-      });
-    } catch (e) {
-      console.error("Live sync failed:", e);
-    }
-  }
-
   return record;
 }
 
-export async function updateRecord(moduleName, record) {
+export async function updateRecord(moduleType, record) {
   const db = getDatabase();
-  const user = getCurrentUser();
-  const now = new Date().toISOString();
+  let key = moduleType.toLowerCase() + "s";
+  if (key === "assets") key = "assets";
+  if (!db[key]) return null;
 
-  const keyMap = {
-    Income: "incomes",
-    Expense: "expenses",
-    Claim: "claims",
-    Invoice: "invoices",
-    Quotation: "quotations",
-    Stock: "stock",
-  };
-
-  const listKey = keyMap[moduleName] || moduleName.toLowerCase();
-  const list = db[listKey] || [];
-  const idx = list.findIndex((r) => r.id === record.id);
-
+  const idx = db[key].findIndex((r) => r.id === record.id);
   if (idx !== -1) {
-    const oldRecord = { ...list[idx] };
-    record.updated_at = now;
-    list[idx] = { ...list[idx], ...record };
+    db[key][idx] = { ...db[key][idx], ...record };
+    logAction(getCurrentUser().name, "UPDATE", moduleType.toUpperCase(), record.id, "", `Updated ${moduleType} record`);
     saveDatabase(db);
-    logAction(user.name, "UPDATE", moduleName.toUpperCase(), record.id, oldRecord, record);
-
-    const settings = getSettings();
-    if (settings.api_mode === "LIVE" && settings.google_sheet_url) {
-      try {
-        await fetch(settings.google_sheet_url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: `update${moduleName}`, data: record, user: user.name }),
-        });
-      } catch (e) {
-        console.error("Live update failed:", e);
-      }
-    }
-    return list[idx];
+    return db[key][idx];
   }
-  throw new Error(`Record ${record.id} not found`);
+  return null;
 }
 
-export async function deleteRecord(moduleName, recordId) {
+export async function deleteRecord(moduleType, recordId) {
   const db = getDatabase();
-  const user = getCurrentUser();
+  let key = moduleType.toLowerCase() + "s";
+  if (key === "assets") key = "assets";
+  if (!db[key]) return false;
 
-  const keyMap = {
-    Income: "incomes",
-    Expense: "expenses",
-    Claim: "claims",
-    Invoice: "invoices",
-    Quotation: "quotations",
-    Stock: "stock",
-  };
-
-  const listKey = keyMap[moduleName] || moduleName.toLowerCase();
-  const list = db[listKey] || [];
-  const item = list.find((r) => r.id === recordId);
-
-  if (item) {
-    // Soft Delete
-    item.record_status = "DELETED";
-    item.updated_at = new Date().toISOString();
+  const idx = db[key].findIndex((r) => r.id === recordId);
+  if (idx !== -1) {
+    db[key][idx].record_status = "DELETED";
+    logAction(getCurrentUser().name, "DELETE", moduleType.toUpperCase(), recordId, "", `Soft deleted ${moduleType} record`);
     saveDatabase(db);
-    logAction(user.name, "SOFT_DELETE", moduleName.toUpperCase(), recordId, "ACTIVE", "DELETED");
-
-    const settings = getSettings();
-    if (settings.api_mode === "LIVE" && settings.google_sheet_url) {
-      try {
-        await fetch(settings.google_sheet_url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: `delete${moduleName}`, data: { id: recordId }, user: user.name }),
-        });
-      } catch (e) {
-        console.error("Live delete failed:", e);
-      }
-    }
     return true;
   }
   return false;

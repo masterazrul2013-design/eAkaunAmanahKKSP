@@ -11,6 +11,7 @@ import { renderClaimsView, attachClaimsEvents, openClaimFormModal } from "./view
 import { renderInvoiceView, attachInvoiceEvents, openInvoiceFormModal } from "./views/InvoiceView.js";
 import { renderQuotationView, attachQuotationEvents, openQuotationFormModal } from "./views/QuotationView.js";
 import { renderInventoryView, attachInventoryEvents } from "./views/InventoryView.js";
+import { renderAssetsView, attachAssetsEvents, openAssetFormModal } from "./views/AssetsView.js";
 import { renderDataQualityView, attachDataQualityEvents } from "./views/DataQualityView.js";
 import { renderReportsView, attachReportsEvents } from "./views/ReportsView.js";
 import { renderAuditLogView } from "./views/AuditLogView.js";
@@ -29,9 +30,15 @@ window.openExpenseFormModal = (db, rec) => openExpenseFormModal(db || getDatabas
 window.openClaimFormModal = (db, rec) => openClaimFormModal(db || getDatabase(), rec);
 window.openInvoiceFormModal = (db, rec) => openInvoiceFormModal(db || getDatabase(), rec);
 window.openQuotationFormModal = (db, rec) => openQuotationFormModal(db || getDatabase(), rec);
+window.openAssetFormModal = (db, rec) => openAssetFormModal(db || getDatabase(), rec);
+
+import { initAutoCloudSync } from "./services/cloudSync.js";
 
 export function initApp() {
   const db = getDatabase();
+
+  // Start real-time background multi-device cloud synchronization
+  initAutoCloudSync();
 
   // Router handler
   const handleRoute = () => {
@@ -57,6 +64,7 @@ export function initApp() {
     else if (moduleType === "Claim") window.openClaimFormModal(activeDb);
     else if (moduleType === "Invoice") window.openInvoiceFormModal(activeDb);
     else if (moduleType === "Quotation") window.openQuotationFormModal(activeDb);
+    else if (moduleType === "Asset") window.openAssetFormModal(activeDb);
     else if (moduleType === "Stock" && window.openStockFormModal) window.openStockFormModal(activeDb);
   };
 
@@ -114,20 +122,22 @@ function renderUI() {
   } else if (currentRoute === "penyata") {
     attachPenyataEvents();
   } else if (currentRoute === "income") {
-    attachIncomeEvents(db);
+    attachIncomeEvents(db, selectedYear);
   } else if (currentRoute === "expenses") {
-    attachExpenseEvents(db);
+    attachExpenseEvents(db, selectedYear);
   } else if (currentRoute === "claims") {
-    attachClaimsEvents(db);
+    attachClaimsEvents(db, selectedYear);
   } else if (currentRoute === "invoices") {
-    attachInvoiceEvents(db);
+    attachInvoiceEvents(db, selectedYear);
   } else if (currentRoute === "quotations") {
-    attachQuotationEvents(db);
+    attachQuotationEvents(db, selectedYear);
   } else if (currentRoute === "inventory") {
     attachInventoryEvents(db, (tab) => {
       state.stockSubTab = tab;
       renderUI();
     });
+  } else if (currentRoute === "assets") {
+    attachAssetsEvents(db);
   } else if (currentRoute === "data_quality") {
     attachDataQualityEvents(db);
   } else if (currentRoute === "reports") {
@@ -159,6 +169,8 @@ function renderMainView(db, route, selectedYear) {
       return renderQuotationView(db, selectedYear);
     case "inventory":
       return renderInventoryView(db, selectedYear, state.stockSubTab);
+    case "assets":
+      return renderAssetsView(db, selectedYear);
     case "data_quality":
       return renderDataQualityView(db);
     case "reports":

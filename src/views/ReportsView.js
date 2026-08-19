@@ -1,4 +1,4 @@
-// Reports & Analytics Center Component with Accurate Date & Month Filter
+// Reports & Analytics Center Component with Asset, Unit, Date & Month Filtering
 import { formatCurrency } from "../data/schema.js";
 import { showToast } from "../components/Toast.js";
 import jsPDF from "jspdf";
@@ -6,6 +6,7 @@ import "jspdf-autotable";
 import * as XLSX from "xlsx";
 
 let reportMonthFilter = "ALL";
+let reportUnitFilter = "ALL";
 let reportStartDate = "";
 let reportEndDate = "";
 
@@ -51,12 +52,13 @@ function isDateInRange(dateStr, startDateStr, endDateStr) {
 export function renderReportsView(db, selectedYear, activeReportType = "penyata") {
   const reportsList = [
     { id: "penyata", title: "Laporan Penyata Kewangan Tahunan", icon: "📑", desc: "Ringkasan baki, pendapatan & perbelanjaan mengikut bulan" },
-    { id: "income", title: "Laporan Terimaan Pendapatan", icon: "💵", desc: "Senarai penuh terimaan resit & yuran program" },
+    { id: "income", title: "Laporan Terimaan Pendapatan", icon: "💵", desc: "Senarai penuh terimaan resit & yuran program mengikut Unit" },
     { id: "expense", title: "Laporan Perbelanjaan & Perolehan", icon: "🛒", desc: "Analisis perbelanjaan mengikut pembekal & status PO" },
     { id: "claims", title: "Laporan Tuntutan Penceramah", icon: "🎓", desc: "Senarai elaun penceramah jemputan & status kelulusan" },
     { id: "invoices", title: "Laporan Invois & Tunggakan", icon: "📄", desc: "Invois belum dibayar & penjejakan Overdue" },
     { id: "quotations", title: "Laporan Pipeline Sebutharga", icon: "📋", desc: "Cadangan sebutharga aktif & status kelulusan" },
     { id: "stock", title: "Laporan Kedudukan Stok (KEW.PS-3)", icon: "📦", desc: "Ringkasan baki item, kuantiti terimaan & nilai stok" },
+    { id: "assets", title: "Laporan Pengurusan Aset Amanah", icon: "🏛️", desc: "Senarai pendaftaran Harta Modal, Inventori & Lokasi" },
     { id: "data_quality", title: "Laporan Kualiti Data & Integriti", icon: "🛡️", desc: "Senarai rekod tidak lengkap & perbezaan audit" },
   ];
 
@@ -78,7 +80,9 @@ export function renderReportsView(db, selectedYear, activeReportType = "penyata"
   const currentReportObj = reportsList.find((r) => r.id === activeReportType) || reportsList[0];
 
   const filterSubtitle =
-    reportMonthFilter !== "ALL"
+    reportUnitFilter !== "ALL"
+      ? `Tapisan Unit: ${reportUnitFilter} | ${reportMonthFilter !== "ALL" ? "Bulan: " + reportMonthFilter : "Semua Bulan"}`
+      : reportMonthFilter !== "ALL"
       ? `Tapisan Bulan: ${monthsMap.find((m) => m.code === reportMonthFilter)?.name || reportMonthFilter}`
       : reportStartDate && reportEndDate
       ? `Tapisan Tarikh: ${reportStartDate} hingga ${reportEndDate}`
@@ -90,7 +94,7 @@ export function renderReportsView(db, selectedYear, activeReportType = "penyata"
       <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm no-print">
         <div>
           <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">PUSAT LAPORAN KEWANGAN & STRATEGIK</h2>
-          <p class="text-xs font-medium text-slate-500 mt-1">Pilih laporan & tapis mengikut bulan/tarikh. Jika tidak dipilih, laporan keseluruhan dipaparkan.</p>
+          <p class="text-xs font-medium text-slate-500 mt-1">Pilih laporan & tapis mengikut Unit, bulan, atau tarikh. Jika tidak dipilih, laporan keseluruhan dipaparkan.</p>
         </div>
         <div class="flex items-center gap-2">
           <button id="btn-export-excel" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-2">
@@ -105,15 +109,25 @@ export function renderReportsView(db, selectedYear, activeReportType = "penyata"
         </div>
       </div>
 
-      <!-- Interactive Month & Date Filter Bar (Hidden when printing) -->
+      <!-- Interactive Unit, Month & Date Filter Bar (Hidden when printing) -->
       <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm no-print space-y-2">
         <div class="flex items-center justify-between border-b border-slate-100 pb-2">
           <span class="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-            <span>🔍</span> TAPISAN BULAN & TARIKH LAPORAN
+            <span>🔍</span> TAPISAN UNIT, BULAN & TARIKH LAPORAN
           </span>
-          <span class="text-[11px] text-slate-500 font-medium">Baki Terbuka: <strong class="text-blue-900 font-bold">${filterSubtitle}</strong></span>
+          <span class="text-[11px] text-slate-500 font-medium">Status Tapisan: <strong class="text-blue-900 font-bold">${filterSubtitle}</strong></span>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-1 text-xs items-end">
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3 pt-1 text-xs items-end">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Tapis Unit:</label>
+            <select id="report-unit-select" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold">
+              <option value="ALL" ${reportUnitFilter === "ALL" ? "selected" : ""}>Semua Unit (Keseluruhan)</option>
+              <option value="PSH" ${reportUnitFilter === "PSH" ? "selected" : ""}>PSH</option>
+              <option value="RUC" ${reportUnitFilter === "RUC" ? "selected" : ""}>RUC</option>
+              <option value="HEP" ${reportUnitFilter === "HEP" ? "selected" : ""}>HEP</option>
+              <option value="Lain-lain" ${reportUnitFilter === "Lain-lain" ? "selected" : ""}>Lain-lain</option>
+            </select>
+          </div>
           <div>
             <label class="block font-bold text-slate-700 mb-1">Tapis Bulan:</label>
             <select id="report-month-select" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold">
@@ -143,7 +157,7 @@ export function renderReportsView(db, selectedYear, activeReportType = "penyata"
       </div>
 
       <!-- Report Selection Grid (Hidden when printing) -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 no-print">
+      <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 gap-3.5 no-print">
         ${reportsList
           .map((r) => {
             const isSelected = activeReportType === r.id;
@@ -171,7 +185,7 @@ export function renderReportsView(db, selectedYear, activeReportType = "penyata"
       <div id="printable-report-area" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6 card-box">
         <!-- Official Institutional Header for Print / Report with Official SVG Logo -->
         <div class="text-center border-b-2 border-slate-900 pb-4 space-y-1">
-          <img src="/logo.svg" alt="Kolej Komuniti Sungai Petani Logo" class="h-12 w-auto object-contain mx-auto mb-2" />
+          <img src="./logo.svg" alt="Kolej Komuniti Sungai Petani Logo" class="h-12 w-auto object-contain mx-auto mb-2" />
           <h2 class="text-lg font-black text-slate-900 uppercase tracking-wider">${db.settings.organisation_name || "KOLEJ KOMUNITI SUNGAI PETANI"}</h2>
           <h3 class="text-base font-extrabold text-blue-900 uppercase tracking-wide">${currentReportObj.title.toUpperCase()}</h3>
           <p class="text-xs font-semibold text-slate-600">${filterSubtitle}</p>
@@ -216,6 +230,15 @@ function filterByMonthAndDate(items, selectedYear, dateKey = "date") {
     active = active.filter((i) => (i.year || (i[dateKey] && i[dateKey].slice(-4))) === selectedYear || (!i.year && selectedYear === "2025"));
   }
 
+  // Unit filter (for incomes)
+  if (reportUnitFilter !== "ALL") {
+    if (reportUnitFilter === "Lain-lain") {
+      active = active.filter((i) => i.unit && !["PSH", "RUC", "UPB"].includes(i.unit));
+    } else {
+      active = active.filter((i) => (i.unit || "PSH") === reportUnitFilter);
+    }
+  }
+
   // Month filter
   if (reportMonthFilter !== "ALL") {
     active = active.filter((i) => i.month === reportMonthFilter);
@@ -224,7 +247,7 @@ function filterByMonthAndDate(items, selectedYear, dateKey = "date") {
   // Date range filter
   if (reportStartDate || reportEndDate) {
     active = active.filter((i) => {
-      const valDate = i[dateKey] || i.date || i.invoice_date || i.quotation_date || i.claim_date || i.transaction_date;
+      const valDate = i[dateKey] || i.date || i.invoice_date || i.quotation_date || i.claim_date || i.transaction_date || i.acquisition_date;
       return isDateInRange(valDate, reportStartDate, reportEndDate);
     });
   }
@@ -234,23 +257,45 @@ function filterByMonthAndDate(items, selectedYear, dateKey = "date") {
 
 function renderReportTable(db, type, selectedYear) {
   switch (type) {
+    case "assets": {
+      let records = filterByMonthAndDate(db.assets, selectedYear, "acquisition_date");
+      const total = records.reduce((a, b) => a + (Number(b.value) || 0), 0);
+      return `
+        <table class="inst-table">
+          <thead>
+            <tr><th>NO. ID ASET</th><th>NAMA ASET</th><th>NO. SIRI / RUJUKAN</th><th>LOKASI</th><th>JENIS ASET</th><th>STATUS</th><th class="text-right">NILAI (RM)</th></tr>
+          </thead>
+          <tbody>
+            ${
+              records.length === 0
+                ? `<tr><td colspan="7" class="text-center py-6 text-slate-400 font-medium">Tiada pendaftaran aset Akaun Amanah bagi tahun ${selectedYear === "2025" ? "2025 (Pendaftaran aset bermula tahun 2026)" : selectedYear}.</td></tr>`
+                : records.map((r) => `<tr><td class="font-bold text-slate-900">${r.id}</td><td class="font-bold text-slate-800">${r.asset_name}</td><td class="font-mono text-xs">${r.serial_no || "-"}</td><td>${r.location || "-"}</td><td><span class="px-2 py-0.5 bg-indigo-50 text-indigo-800 font-bold rounded text-xs">${r.asset_type}</span></td><td>${r.status || "Aktif"}</td><td class="text-right font-extrabold text-indigo-700">${formatCurrency(r.value)}</td></tr>`).join("")
+            }
+          </tbody>
+          <tfoot class="bg-slate-100 font-extrabold text-sm border-t-2 border-slate-300">
+            <tr><td colspan="6" class="uppercase">JUMLAH KESELURUHAN NILAI ASET AKAUN AMANAH</td><td class="text-right text-indigo-700">${formatCurrency(total)}</td></tr>
+          </tfoot>
+        </table>
+      `;
+    }
+
     case "income": {
       const records = filterByMonthAndDate(db.incomes, selectedYear, "date");
       const total = records.reduce((a, b) => a + (Number(b.amount) || 0), 0);
       return `
         <table class="inst-table">
           <thead>
-            <tr><th>NO. ID</th><th>TARIKH</th><th>PROGRAM / KOD</th><th>PEMBAYAR / PELANGGAN</th><th>NO. RESIT</th><th class="text-right">JUMLAH (RM)</th></tr>
+            <tr><th>NO. ID</th><th>UNIT</th><th>TARIKH</th><th>PROGRAM / KOD</th><th>PEMBAYAR / PELANGGAN</th><th>NO. RESIT</th><th class="text-right">JUMLAH (RM)</th></tr>
           </thead>
           <tbody>
             ${
               records.length === 0
-                ? `<tr><td colspan="6" class="text-center py-6 text-slate-400 font-medium">Tiada rekod pendapatan bagi julat tarikh ini (0 data).</td></tr>`
-                : records.map((r) => `<tr><td class="font-bold text-slate-900">${r.id}</td><td>${r.date || r.month}</td><td class="font-medium">${r.programme}</td><td>${r.payer || "Peserta"}</td><td class="font-mono text-xs">${r.receipt_no || "-"}</td><td class="text-right font-extrabold text-emerald-700">${formatCurrency(r.amount)}</td></tr>`).join("")
+                ? `<tr><td colspan="7" class="text-center py-6 text-slate-400 font-medium">Tiada rekod pendapatan bagi unit & julat tarikh ini (0 data).</td></tr>`
+                : records.map((r) => `<tr><td class="font-bold text-slate-900">${r.id}</td><td><span class="px-2 py-0.5 bg-blue-50 text-blue-800 font-bold rounded text-xs">${r.unit || "PSH"}</span></td><td>${r.date || r.month}</td><td class="font-medium">${r.programme}</td><td>${r.payer || "Peserta"}</td><td class="font-mono text-xs">${r.receipt_no || "-"}</td><td class="text-right font-extrabold text-emerald-700">${formatCurrency(r.amount)}</td></tr>`).join("")
             }
           </tbody>
           <tfoot class="bg-slate-100 font-extrabold text-sm border-t-2 border-slate-300">
-            <tr><td colspan="5" class="uppercase">JUMLAH KESELURUHAN PENDAPATAN</td><td class="text-right text-emerald-700">${formatCurrency(total)}</td></tr>
+            <tr><td colspan="6" class="uppercase">JUMLAH KESELURUHAN PENDAPATAN ${reportUnitFilter !== "ALL" ? "(" + reportUnitFilter + ")" : ""}</td><td class="text-right text-emerald-700">${formatCurrency(total)}</td></tr>
           </tfoot>
         </table>
       `;
@@ -403,10 +448,12 @@ export function attachReportsEvents(db, onReportChange) {
 
   if (btnApply) {
     btnApply.onclick = () => {
+      const unitSel = document.getElementById("report-unit-select");
+      if (unitSel) reportUnitFilter = unitSel.value;
       reportMonthFilter = document.getElementById("report-month-select").value;
       reportStartDate = document.getElementById("report-start-date").value;
       reportEndDate = document.getElementById("report-end-date").value;
-      showToast("✓ Tapisan bulan & tarikh laporan dikemaskini");
+      showToast("✓ Tapisan unit, bulan & tarikh laporan dikemaskini");
       if (window.appRefreshUI) window.appRefreshUI();
       else window.location.reload();
     };
@@ -414,6 +461,7 @@ export function attachReportsEvents(db, onReportChange) {
 
   if (btnReset) {
     btnReset.onclick = () => {
+      reportUnitFilter = "ALL";
       reportMonthFilter = "ALL";
       reportStartDate = "";
       reportEndDate = "";
@@ -437,6 +485,7 @@ export function attachReportsEvents(db, onReportChange) {
       else if (activeReport === "invoices") exportData = db.invoices || [];
       else if (activeReport === "quotations") exportData = db.quotations || [];
       else if (activeReport === "stock") exportData = db.stock || [];
+      else if (activeReport === "assets") exportData = db.assets || [];
       else exportData = db.incomes || [];
 
       const sheet = XLSX.utils.json_to_sheet(exportData.filter((r) => r.record_status !== "DELETED"));
